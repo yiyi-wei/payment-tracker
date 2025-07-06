@@ -1,0 +1,256 @@
+@startuml AI Analysis Bounded Context
+
+!theme vibrant
+' hide empty members
+' skinparam linetype ortho
+
+' Pre-define stereotypes
+!define aggregate(name) entity name << (A, #FFD700) >>
+!define entity(name) entity name << (E, #ADD8E6) >>
+!define vo(name) object name << (V, #90EE90) >>
+!define command(name) class name << (C, #FFA07A) >>
+!define event(name) class name << (E, #DDA0DD) >>
+!define enum(name) enum name << (EN, #F0E68C) >>
+
+package "AI Payment Result Recognition Bounded Context" {
+
+    ' =============================================
+    ' Aggregates
+    ' =============================================
+
+    aggregate(PaymentImageAgg) {
+        - paymentImageId: UUID
+        - uploaderId: UUID
+        - imageUrl: String
+        - uploadedAt: Instant
+        --
+        + requestAnalysis(): ImageAnalysisRequestedEvent
+    }
+    note right of PaymentImageAgg
+        **职责 (Responsibilities):**
+        - 仅负责接收支付图片上传请求。
+        - 存储图片元数据。
+        - 发布 **ImageAnalysisRequestedEvent** 事件，
+          触发后续的分析流程。
+        - 职责被精简，不关心分析的具体过程和结果。
+    end note
+
+
+    aggregate(ImageAnalysisAttemptAgg) {
+        - attemptId: UUID
+        - paymentImageId: UUID
+        - status: AnalysisStatus
+        - aiContext: AIInvocationContext
+        - rawAnalysisResult: String
+        - parsedPaymentDetails: ParsedPaymentDetails
+        - userConfirmation: UserConfirmation
+        - failureReason: String
+        --
+        + startAnalysis(context: AIInvocationContext): ImageAnalysisStartedEvent
+        + recordSuccess(result: RawResult, details: ParsedDetails): ImageAnalysisSucceededEvent
+        + recordFailure(reason: String): ImageAnalysisFailedEvent
+        + confirmResult(confirmation: UserConfirmation): AnalysisResultConfirmedEvent
+    }
+    note left of ImageAnalysisAttemptAgg
+        **职责 (Responsibilities):**
+        - 核心聚合根，封装一次完整的AI分析尝试。
+        - 管理自身的状态机 (AnalysisStatus)。
+        - 记录AI调用的上下文信息。
+        - 存储AI返回的原始结果和解析后的结构化数据。
+        - 接收并记录用户的最终确认结果。
+        - 发布分析过程中的关键领域事件。
+    end note
+
+    ' =============================================
+    ' Entities / Value Objects within Aggregates
+    ' =============================================
+
+    vo(AIInvocationContext) {
+        - modelName: String
+        - promptVersion: String
+        - requestTimestamp: Instant
+        - responseTimestamp: Instant
+        - retryCount: int
+    }
+
+    vo(ParsedPaymentDetails) {
+        - amount: BigDecimal
+        - currency: String
+        - transactionDate: LocalDateTime
+        - payee: String
+        - paymentMethod: String
+        - categoryGuess: String
+    }
+
+    entity(UserConfirmation) {
+        - confirmationId: UUID
+        - confirmedBy: UUID
+        - confirmedAt: Instant
+        - confirmationType: ConfirmationType
+        - correctedDetails: ParsedPaymentDetails ' (Optional)
+    }
+
+    ' =============================================
+    ' Enums for State and Type
+    ' =============================================
+
+    enum(AnalysisStatus) {
+        PENDING_ANALYSIS
+        ANALYZING
+        ANALYSIS_SUCCEEDED
+        ANALYSIS_FAILED
+        PENDING_CONFIRMATION
+        CONFIRMED
+        REJECTED
+    }
+
+    enum(ConfirmationType) {
+        ACCEPTED
+        MODIFIED
+        REJECTED
+    }
+
+    ' =============================================
+    ' Relationships
+    ' =============================================
+
+    ImageAnalysisAttemptAgg "1" *-- "1" AnalysisStatus
+    ImageAnalysisAttemptAgg "1" *-- "1" AIInvocationContext
+    ImageAnalysisAttemptAgg "1" *-- "1" ParsedPaymentDetails
+    ImageAnalysisAttemptAgg "1" *-- "0..1" UserConfirmation
+    UserConfirmation "1" *-- "1" ConfirmationType
+
+    ' =============================================
+    ' Commands & Events
+    ' =============================================
+
+    package "Commands" {
+        command(RequestImageAnalysisCommand) {
+            + paymentImageId: UUID
+            + uploaderId: UUID
+            + imageUrl: String
+        }
+        command(ConfirmAnalysisResultCommand) {
+            + attemptId: UUID
+            + userId: UUID
+            + confirmationType: ConfirmationType
+            + correctedDetails: ParsedPaymentDetails
+        }
+    }
+
+    package "Domain Events" {
+        event(ImageAnalysisRequestedEvent) {
+            + eventId: UUID
+            + occurredOn: Instant
+            + paymentImageId: UUID
+            + imageUrl: String
+        }
+        event(ImageAnalysisStartedEvent) {
+            + eventId: UUID
+            + occurredOn: Instant
+            + attemptId: UUID
+        }
+        event(ImageAnalysisSucceededEvent) {
+            + eventId: UUID
+            + occurredOn: Instant
+            + attemptId: UUID
+            + parsedDetails: ParsedPaymentDetails
+        }
+        event(ImageAnalysisFailedEvent) {
+            + eventId: UUID
+            + occurredOn: Instant
+            + attemptId: UUID
+            + reason: String
+        }
+        event(AnalysisResultConfirmedEvent) {
+            + eventId: UUID
+            + occurredOn: Instant
+            + attemptId: UUID
+            + paymentImageId: UUID
+            + finalDetails: ParsedPaymentDetails
+        }
+    }
+
+    ' =============================================
+    ' Data Flow (Simplified)
+    ' =============================================
+    RequestImageAnalysisCommand .> PaymentImageAgg : triggers
+    PaymentImageAgg ..> ImageAnalysisRequestedEvent : publishes
+
+    ImageAnalysisRequestedEvent ..> ImageAnalysisAttemptAgg : (handled by App Service) creates
+
+    ' (Internal process or App Service triggers)
+    ImageAnalysisAttemptAgg ..> ImageAnalysisStartedEvent : publishes
+    ImageAnalysisAttemptAgg ..> ImageAnalysisSucceededEvent : publishes
+    ImageAnalysisAttemptAgg ..> ImageAnalysisFailedEvent : publishes
+
+    ConfirmAnalysisResultCommand .> ImageAnalysisAttemptAgg : triggers
+    ImageAnalysisAttemptAgg ..> AnalysisResultConfirmedEvent : publishes
+
+}
+
+@enduml
+
+' =============================================
+' Hexagonal Architecture View: AI Service Integration
+' =============================================
+skinparam componentStyle uml2
+
+package "Inbound (Driving) Adapters" #LightSkyBlue {
+  component "ImageAnalysisRequestListener" as Listener
+  note top of Listener
+    Handles ImageAnalysisRequestedEvent
+    (Asynchronous Entry Point)
+  end note
+}
+
+hexagon "Application Core" #White {
+  
+  package "Application Service (Use Cases)" {
+    component "ImageAnalysisApplicationService" as AppService
+  }
+
+  package "Domain Model" {
+     aggregate(ImageAnalysisAttemptAgg)
+  }
+
+  package "Outbound Ports" {
+    interface "AIAnalysisPort" as AIAnalysisPort
+    interface "ImageAnalysisAttemptRepository" as RepoPort
+    interface "PaymentImageRepository" as ImageRepoPort
+  }
+}
+
+package "Outbound (Driven) Adapters" #LightGreen {
+  component "LangChain4jAIAnalysisAdapter" as AIAdapter
+  note bottom of AIAdapter
+    Implements AIAnalysisPort.
+    Connects to the real AI service.
+  end note
+  component "PersistenceAdapter" as PersistenceAdapter
+  note bottom of PersistenceAdapter
+    Implements repository ports.
+    Communicates with the database.
+  end note
+}
+
+package "External Systems" {
+    external_system("Alibaba Qwen AI Service") as QwenService
+    database "PostgreSQL" as DB
+}
+
+
+' --- Connections ---
+Listener --> AppService : (via UseCase Interface)
+
+AppService --> AIAnalysisPort
+AppService --> RepoPort
+AppService --> ImageRepoPort
+AppService --> ImageAnalysisAttemptAgg : uses
+
+AIAdapter .u.|> AIAnalysisPort
+PersistenceAdapter .u.|> RepoPort
+PersistenceAdapter .u.|> ImageRepoPort
+
+AIAdapter -r-> QwenService : HTTPS/API Call
+PersistenceAdapter -r-> DB : JDBC

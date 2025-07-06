@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "DATABASE_URI",
+        "crystaldba/postgres-mcp",
+        "--access-mode=unrestricted"
+      ],
+      "env": {
+        "DATABASE_URI": "postgresql://payment_tracker_user:PaymentPassw0rd@222.186.21.45:25432/payment_tracker"
+      },
+      "disabled": false
+    }
+  }
+}

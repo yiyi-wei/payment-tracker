@@ -1,0 +1,437 @@
+@startuml
+!include ../lib/lib_eventstorming.puml
+scale 1
+
+' =================================================================================
+' 领域事件 (Domain Events)
+' =================================================================================
+package "Identity & Access Context" {
+    DomainEvent("UserAccountCreatedEvt") [
+        用户账户已创建
+        --fields--
+        用户ID: userId
+        电子邮件
+        手机号
+    ]
+    DomainEvent("UserLoggedInEvt") [
+        用户已登录
+        --fields--
+        用户ID: userId
+        登录时间
+    ]
+    DomainEvent("UserSecurityUpdatedEvt") [
+        用户安全设置已更新
+        --fields--
+        用户ID: userId
+        安全类型
+        是否启用
+    ]
+}
+
+package "Payment Context" {
+    DomainEvent("PaymentMethodAddedEvt") [
+        支付方式已添加
+        --fields--
+        用户ID: userId
+        支付方式ID
+        支付方式类型
+    ]
+    DomainEvent("PaymentMethodRemovedEvt") [
+        支付方式已移除
+        --fields--
+        用户ID: userId
+        支付方式ID
+    ]
+    DomainEvent("PaymentRecordedEvt") [
+        支付记录已记录
+        --fields--
+        支付记录ID
+        用户ID: userId
+        支付金额, 支付时间, 支付商户
+        支付方式, 付款分类, 凭证图片Id
+        AI分析结果ID, 付款状态, 上传方式
+        标签, 备注
+    ]
+    DomainEvent("PaymentExportedEvt") [
+        支付记录已导出
+        --fields--
+        导出ID
+        用户ID: userId
+        导出格式
+    ]
+    DomainEvent("PaymentSharedEvt") [
+        支付记录已分享
+        --fields--
+        分享ID
+        用户ID: userId
+        分享格式
+        分享目标
+    ]
+    DomainEvent("PaymentCategoryCreatedEvt") [
+        支付分类已创建
+        --fields--
+        分类ID
+        用户ID: userId
+        分类名称
+        父分类ID
+    ]
+    DomainEvent("PaymentCategoryUpdatedEvt") [
+        支付分类已更新
+        --fields--
+        分类ID
+        分类名称
+        父分类ID
+    ]
+}
+
+package "AI Analysis Context" {
+    DomainEvent("PaymentImageUploadedEvt") [
+        支付凭证图片已上传
+        --fields--
+        图像ID: imageId
+        用户ID: userId
+        上传时间
+    ]
+    DomainEvent("ImageProcessingStartedEvt") [
+        图像处理已开始
+        --fields--
+        图像ID: imageId
+    ]
+    DomainEvent("PaymentAnalysisSucceededEvt") [
+        支付分析已成功
+        --fields--
+        图像ID: imageId
+        分析结果: analysisResult
+    ]
+    DomainEvent("PaymentAnalysisFailedEvt") [
+        支付分析已失败
+        --fields--
+        图像ID: imageId
+        失败原因: reason
+    ]
+    DomainEvent("UserConfirmationRequiredEvt") [
+        需要用户确认
+        --fields--
+        图像ID: imageId
+        建议的分析结果: suggestedResult
+    ]
+}
+
+package "Notification Context" {
+    DomainEvent("ReminderSettingUpdatedEvt") [
+        提醒设置已更新
+        --fields--
+        用户ID: userId
+        提醒设置ID
+        提醒类型, 提醒频率
+    ]
+    DomainEvent("ReminderSentEvt") [
+        提醒已发送
+        --fields--
+        提醒ID
+        用户ID: userId
+        支付记录ID
+        提醒消息
+    ]
+}
+
+package "Analytics Context" {
+    DomainEvent("AnalysisGeneratedEvt") [
+        分析报告已生成
+        --fields--
+        分析ID
+        用户ID: userId
+        分析类型
+        分析数据
+    ]
+}
+
+package "Integration Context" {
+    DomainEvent("PlatformSyncConfiguredEvt") [
+        平台同步已配置
+        --fields--
+        用户ID: userId
+        平台类型
+        同步频率
+    ]
+}
+
+
+' =================================================================================
+' 参与者 (Actors)
+' =================================================================================
+Person("User") [ 用户 ]
+Person("Timer") [ 定时器 ]
+Person("CrossPlatformClient") [ 跨平台客户端 ]
+
+
+' =================================================================================
+' 命令 (Commands)
+' =================================================================================
+package "Identity & Access Commands" {
+    Command("CreateUserAccountCmd") [ 创建用户账户 ]
+    Command("LoginUserCmd") [ 用户登录 ]
+    Command("UpdateUserSecurityCmd") [ 更新用户安全设置 ]
+}
+
+package "Payment Commands" {
+    Command("AddPaymentMethodCmd") [ 添加支付方式 ]
+    Command("RemovePaymentMethodCmd") [ 移除支付方式 ]
+    Command("RecordPaymentCmd") [ 记录支付 ]
+    Command("ExportPaymentsCmd") [ 导出支付记录 ]
+    Command("SharePaymentCmd") [ 分享支付记录 ]
+    Command("CreatePaymentCategoryCmd") [ 创建支付分类 ]
+    Command("UpdatePaymentCategoryCmd") [ 更新支付分类 ]
+}
+
+package "AI Analysis Commands" {
+    Command("UploadPaymentImageCmd") [
+        上传支付凭证图片
+        --rule--
+        1. 图像格式支持
+        --fields--
+        用户ID: userId, 图像文件
+        --event--
+        PaymentImageUploadedEvt
+    ]
+    Command("StartImageProcessingCmd") [
+        开始图像处理
+        --rule--
+        1. 图像状态为 pending
+        --fields--
+        图像ID: imageId
+        --event--
+        ImageProcessingStartedEvt
+    ]
+    Command("CompletePaymentAnalysisCmd") [
+        完成支付分析
+        --rule--
+        1. 图像状态为 processing
+        --fields--
+        图像ID: imageId, 分析结果
+        --event--
+        PaymentAnalysisSucceededEvt
+    ]
+    Command("FailPaymentAnalysisCmd") [
+        标记支付分析失败
+        --rule--
+        1. 图像状态为 processing
+        --fields--
+        图像ID: imageId, 失败原因
+        --event--
+        PaymentAnalysisFailedEvt
+    ]
+    Command("RequestUserConfirmationCmd") [
+        请求用户确认
+        --rule--
+        1. AI分析结果置信度低
+        --fields--
+        图像ID: imageId, 建议结果
+        --event--
+        UserConfirmationRequiredEvt
+    ]
+    Command("ConfirmPaymentAnalysisCmd") [
+        用户确认支付分析
+        --rule--
+        1. 图像状态为 needs_confirmation
+        --fields--
+        图像ID: imageId, 用户确认的结果
+        --event--
+        PaymentAnalysisSucceededEvt
+    ]
+}
+
+package "Notification Commands" {
+    Command("UpdateReminderSettingCmd") [ 更新提醒设置 ]
+    Command("SendReminderCmd") [ 发送支付提醒 ]
+}
+
+package "Analytics Commands" {
+    Command("GenerateAnalysisCmd") [ 生成分析报告 ]
+}
+
+package "Integration Commands" {
+    Command("ConfigurePlatformSyncCmd") [ 配置平台同步 ]
+}
+
+
+' =================================================================================
+' 聚合 (Aggregates)
+' =================================================================================
+package "Identity & Access Aggregates" {
+    Aggregate("UserAgg") [
+        用户
+        --id--
+        用户ID: userId
+        --fields--
+        电子邮件, 手机号, 密码
+        支付方式集合, 提醒设置集合
+        加密密钥, 是否启用二次验证
+    ]
+}
+
+package "Payment Aggregates" {
+    Aggregate("PaymentRecordAgg") [
+        支付记录
+        --id--
+        支付记录ID
+    ]
+    Aggregate("PaymentCategoryAgg") [
+        支付分类
+        --id--
+        分类ID
+    ]
+}
+
+package "AI Analysis Aggregates" {
+    Aggregate("PaymentImageAgg") [
+        支付凭证图像
+        --id--
+        图像ID: imageId
+        --fields--
+        用户ID: userId
+        图像文件引用: imageRef
+        上传时间: uploadedAt
+        状态: status (pending, processing, success, failed, needs_confirmation)
+        分析结果: analysisResult
+        失败原因: failureReason
+        --methods--
+        upload() -> PaymentImageUploadedEvt
+        startProcessing() -> ImageProcessingStartedEvt
+        complete(result) -> PaymentAnalysisSucceededEvt
+        fail(reason) -> PaymentAnalysisFailedEvt
+        requestConfirmation(suggestedResult) -> UserConfirmationRequiredEvt
+    ]
+}
+
+package "Notification Aggregates" {
+    Aggregate("ReminderAgg") [
+        支付提醒
+        --id--
+        提醒ID
+    ]
+}
+
+package "Analytics Aggregates" {
+    Aggregate("AnalyticsAgg") [
+        数据分析
+        --id--
+        分析ID
+    ]
+}
+
+package "Integration Aggregates" {
+    Aggregate("PlatformSyncAgg") [
+        平台同步
+        --id--
+        同步ID
+    ]
+}
+
+
+' =================================================================================
+' 策略 (Policies)
+' =================================================================================
+Policy("ImageAnalysisPolicy") [
+    图像分析策略
+    --rule--
+    1. 图像上传后自动开始分析
+]
+Policy("AnalysisCompletionPolicy") [
+    分析完成策略
+    --rule--
+    1. 分析成功后，根据结果创建支付记录
+]
+Policy("AnalysisFailurePolicy") [
+    分析失败策略
+    --rule--
+    1. 分析失败后，通知用户
+]
+Policy("UserConfirmationPolicy") [
+    用户确认策略
+    --rule--
+    1. 需要确认时，向用户发送通知
+]
+
+
+' =================================================================================
+' 读模型 (Read Models)
+' =================================================================================
+ReadModel("PaymentImagesRM") [ 支付凭证图像列表 ]
+ReadModel("PaymentRecordsRM") [ 支付记录列表 ]
+' ... 其他读模型 ...
+
+
+' =================================================================================
+' 外部系统 (External Systems)
+' =================================================================================
+System("AIService") [
+    AI服务
+    --methods--
+    分析图像 (异步)
+    --description--
+    接收图像分析请求，
+    完成后通过回调或消息通知结果。
+]
+System("NotificationService") [ 通知服务 ]
+' ... 其他外部系统 ...
+
+
+' =================================================================================
+' 关系 (Relationships)
+' =================================================================================
+
+' ----------------- User Interaction Flow -----------------
+User -down-> UploadPaymentImageCmd
+User -down-> ConfirmPaymentAnalysisCmd
+
+' ----------------- Command to Aggregate -----------------
+UploadPaymentImageCmd -right-> PaymentImageAgg : <<creates>>
+StartImageProcessingCmd -right-> PaymentImageAgg : <<updates>>
+CompletePaymentAnalysisCmd -right-> PaymentImageAgg : <<updates>>
+FailPaymentAnalysisCmd -right-> PaymentImageAgg : <<updates>>
+RequestUserConfirmationCmd -right-> PaymentImageAgg : <<updates>>
+ConfirmPaymentAnalysisCmd -right-> PaymentImageAgg : <<updates>>
+
+' ----------------- Aggregate to Event -----------------
+PaymentImageAgg -down-> PaymentImageUploadedEvt
+PaymentImageAgg -down-> ImageProcessingStartedEvt
+PaymentImageAgg -down-> PaymentAnalysisSucceededEvt
+PaymentImageAgg -down-> PaymentAnalysisFailedEvt
+PaymentImageAgg -down-> UserConfirmationRequiredEvt
+
+' ----------------- Policy and Event-Driven Flow (AI Analysis) -----------------
+' 1. Image Uploaded, Policy triggers processing
+PaymentImageUploadedEvt -down-> ImageAnalysisPolicy
+ImageAnalysisPolicy -down-> StartImageProcessingCmd
+
+' 2. Processing Started, invoke external AI Service
+ImageProcessingStartedEvt -down-> AIService : 异步调用分析图像
+
+' 3. AI Service responds (asynchronously)
+AIService ..> CompletePaymentAnalysisCmd : 成功回调
+AIService ..> FailPaymentAnalysisCmd : 失败回调
+AIService ..> RequestUserConfirmationCmd : 低置信度回调
+
+' 4. Analysis Succeeded, Policy triggers payment recording
+PaymentAnalysisSucceededEvt -down-> AnalysisCompletionPolicy
+AnalysisCompletionPolicy -down-> RecordPaymentCmd
+RecordPaymentCmd -right-> PaymentRecordAgg
+
+' 5. Analysis Failed, Policy triggers notification
+PaymentAnalysisFailedEvt -down-> AnalysisFailurePolicy
+AnalysisFailurePolicy -down-> NotificationService : 通知用户分析失败
+
+' 6. Confirmation Needed, Policy triggers notification
+UserConfirmationRequiredEvt -down-> UserConfirmationPolicy
+UserConfirmationPolicy -down-> NotificationService : 请求用户确认
+
+' ----------------- Event to Read Model -----------------
+PaymentImageUploadedEvt -down-> PaymentImagesRM
+ImageProcessingStartedEvt -down-> PaymentImagesRM
+PaymentAnalysisSucceededEvt -down-> PaymentImagesRM
+PaymentAnalysisFailedEvt -down-> PaymentImagesRM
+UserConfirmationRequiredEvt -down-> PaymentImagesRM
+PaymentRecordedEvt -down-> PaymentRecordsRM
+
+@enduml

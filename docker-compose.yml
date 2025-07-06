@@ -1,0 +1,65 @@
+# docker-compose.yml
+# Version of the docker-compose file format.
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: payment-tracker-app/Dockerfile
+    container_name: payment-tracker-app
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - payment-tracker-net
+    restart: unless-stopped
+
+  postgres:
+    # 1. 指定一个明确的、受支持的稳定版本
+    image: postgres:16.9
+    container_name: payment-tracker-postgres
+    
+    # 2. 安全性：使用 .env 文件管理敏感信息
+    env_file:
+      - .env
+      
+    ports:
+      # 3. 安全性：在生产中，通常不应该将数据库端口直接暴露给外部网络
+      - "5432:5432"
+    
+    volumes:
+      # 4. 数据持久化：使用 Docker-managed volume 并指向正确的容器内路径
+      - postgres_data:/var/lib/postgresql/data
+#      - postgres_data:/Users/weihan/docker/postgres/data
+      # 可选：挂载自定义配置文件
+      # - ./my-postgres.conf:/etc/postgresql/postgresql.conf
+    
+    # 5. 高可用性：添加重启策略
+    restart: unless-stopped
+    
+    # 6. 健康检查：让 Docker 知道数据库是否真的准备好接受连接
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    # 7. 网络：将数据库放入自定义网络中，以便应用服务安全连接
+    networks:
+      - payment-tracker-net
+
+# 定义 Docker-managed volume
+volumes:
+  postgres_data:
+    driver: local
+
+# 定义自定义网络
+networks:
+  payment-tracker-net:
+    driver: bridge

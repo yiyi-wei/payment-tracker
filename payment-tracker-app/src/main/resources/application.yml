@@ -1,0 +1,62 @@
+# ===================================================================
+# Spring Boot Application Configuration
+# ===================================================================
+spring:
+  application:
+    name: payment-tracker
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+# ===================================================================
+# Database Configuration (PostgreSQL)
+# ===================================================================
+  datasource:
+    url: jdbc:postgresql://222.186.21.45:25432/payment_tracker
+    username: payment_tracker_user
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update # In production, consider using 'validate' or a migration tool like Flyway/Liquibase
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+# ===================================================================
+# RocketMQ Configuration
+# ===================================================================
+rocketmq:
+  name-server: ${ROCKETMQ_NAME_SERVER:localhost:9876}
+  producer:
+    group: payment-tracker-producer-group
+
+# ===================================================================
+# AI Service (LangChain4j) Configuration
+# ===================================================================
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${OPENAI_API_KEY}
+      model-name: gpt-4o # Or any other model you prefer
+      temperature: 0.7
+
+# ===================================================================
+# OSS
+# ===================================================================
+aliyun:
+  oss:
+    endpoint: "oss-cn-beijing.aliyuncs.com"
+    bucketName: "pay-tracker-alpha"
+    region: "cn-beijing"
+    access-key: ${ALIYUN_OSS_ACCESS_KEY}
+    secret-key: ${ALIYUN_OSS_SECRET_KEY}
+
+# ===================================================================
+# Server Configuration
+# ===================================================================
+server:
+  port: 8080
